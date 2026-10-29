@@ -1,0 +1,1647 @@
+{
+  "about": "Lista de features end-to-end de StockPilot para construir el MVP con datos mock en fases. Sigue la convención de Claude Code para agentes de larga duración: cada entrada de features declara category, description, steps y passes; el orden del array es el orden de ejecución y solo passes se modifica al implementar.",
+  "project": {
+    "name": "StockPilot",
+    "description": "Panel de inventario para una distribuidora de suministros de oficina en República Dominicana. El MVP reproduce el layout de docs/StockPilot-draft.PNG con datos mock; una segunda interacción sustituye el mock por una API NestJS sin reescribir los componentes.",
+    "source_design": "docs/StockPilot-draft.PNG",
+    "generated_at": "2026-10-29",
+    "locale": "es-DO",
+    "currency": "DOP",
+    "stack": {
+      "framework": "Angular 21 standalone, signals, zoneless, OnPush",
+      "styling": "Tailwind CSS 4 con tokens @theme y CSS propio para tabla y gráfico",
+      "testing": "Vitest con @angular/build:unit-test",
+      "icons": "SVG inline propios; sin librería de iconos",
+      "charts": "SVG propio; sin librería de gráficos",
+      "data": "Repositorio mock en memoria detrás de un contrato inyectable"
+    }
+  },
+  "conventions": {
+    "workflow": "Lee este archivo, elige el primer feature con passes:false cuyo deferred no sea true y trabaja solo en ese feature. Al terminar, verifica cada acceptance criterion en el navegador antes de cambiar passes a true.",
+    "editing_rules": [
+      "No cambies id, title, description, steps ni acceptance_criteria mientras implementas.",
+      "Solo cambia passes, de false a true, cuando todos los criterios se hayan verificado end-to-end.",
+      "Si el alcance cambia, agrega un feature nuevo al final de su fase; no reescribas los existentes.",
+      "Si un feature vuelve a romperse, regresa passes a false y anota el fallo en docs/claude-progress.txt."
+    ],
+    "phase_gate": "No inicies una fase hasta que todos los features de la fase anterior tengan passes:true.",
+    "definition_of_done": [
+      "La app corre con npm start y el feature se probó como usuario real a 1440px y 390px como mínimo.",
+      "npm run build y npm test pasan sin errores ni warnings nuevos.",
+      "No hay números, textos de negocio ni colores hardcodeados dentro de componentes de feature.",
+      "El recorrido con teclado funciona, el foco es visible y se respeta prefers-reduced-motion.",
+      "No hay errores en la consola del navegador.",
+      "El cambio se commiteó con un mensaje descriptivo y la nota de progreso (docs/claude-progress.txt, creada al inicio si no existe) quedó actualizada."
+    ],
+    "mock_controls": "El repositorio mock lee ?mock=normal|empty|error|slow al iniciar. empty devuelve colecciones vacías, error rechaza con InventoryError y slow agrega 1.6s de latencia. normal es el valor por defecto."
+  },
+  "scope": {
+    "mvp": "Una sola pantalla operativa de inventario (resumen, tabla y consumo), más acciones locales: crear producto, exportar, preferencias de columnas, avisos, reporte de consumo y secciones placeholder.",
+    "data_strategy": "Todo el MVP usa MockInventoryRepository. Ningún componente conoce el mock: depende de la clase abstracta InventoryRepository.",
+    "in_scope": [
+      "Dashboard de inventario responsive",
+      "Búsqueda, orden, paginación y filtro por almacén",
+      "Creación de producto en memoria",
+      "Exportar CSV de las filas filtradas",
+      "Preferencias de columnas persistidas en localStorage",
+      "Panel de avisos de bajo stock",
+      "Página de reporte de consumo",
+      "Páginas explicativas de Compras y RRHH",
+      "Accesibilidad, pruebas y presupuesto de performance"
+    ],
+    "out_of_scope": [
+      "Backend real, autenticación y roles",
+      "Órdenes de compra y módulo de RRHH funcionales",
+      "Edición o eliminación de productos",
+      "Detalle de producto en drawer o página",
+      "Escaneo de códigos de barras",
+      "Imágenes reales de producto",
+      "Modo oscuro",
+      "Multi-almacén por producto",
+      "Internacionalización más allá de es-DO",
+      "Exportación PDF y envío por correo"
+    ],
+    "assumptions": [
+      "Cada producto pertenece a un solo almacén en el MVP.",
+      "Un producto con onHand menor que minStock está Bajo mínimo; no se distingue agotado en esta versión.",
+      "El usuario del sidebar (Carlos M., Administrador) es estático y no hay login.",
+      "Los cambios de creación viven en memoria y se pierden al recargar.",
+      "El reporte completo merece una ruta propia y un ítem de navegación para no dejar la acción sin destino.",
+      "El estado saludable se llama Disponible en lugar de OK."
+    ],
+    "decisions": [
+      "Los KPIs se calculan desde el repositorio; no se copian los números del draft.",
+      "El seed contiene 1,247 productos para que la paginación sea coherente con el KPI; el 'de 25' del draft se trata como placeholder.",
+      "La primera página conserva exactamente las ocho filas del draft para validar la fidelidad visual.",
+      "El resumen se presenta como una sola banda con separadores hairline, no como tres tarjetas flotantes.",
+      "El botón Exportar se etiqueta Exportar CSV para decir exactamente qué produce.",
+      "La campana abre un panel de avisos; el pie del panel lleva a la tabla ordenada por Bajo mínimo.",
+      "No se usan imágenes de producto: cada categoría tiene un glifo de línea propio."
+    ],
+    "open_questions": [
+      {
+        "question": "¿El wordmark debe ser StockPilot o Inventario, como en el draft?",
+        "implementation_assumption": "StockPilot como marca y Inventario como título de la sección."
+      },
+      {
+        "question": "¿Un producto puede existir en varios almacenes en una versión posterior?",
+        "implementation_assumption": "El modelo StockRow queda preparado para múltiples filas por producto, pero el seed asigna uno solo."
+      },
+      {
+        "question": "¿Ver reporte completo debe ser una página o un panel?",
+        "implementation_assumption": "Página /reportes con ítem propio en la navegación."
+      },
+      {
+        "question": "¿Exportar debe incluir todas las filas filtradas o solo la página visible?",
+        "implementation_assumption": "Todas las filas filtradas, respetando las columnas visibles."
+      },
+      {
+        "question": "¿La campana debe mostrar solo bajo stock o también compras y RRHH?",
+        "implementation_assumption": "Solo avisos de bajo stock en el MVP."
+      }
+    ]
+  },
+  "design": {
+    "concept": "El libro mayor del inventario",
+    "summary": "Un panel de operaciones que se lee como un libro de almacén: papel frío, una sola tinta cobalto, cifras tabulares y reglas finas. La jerarquía del draft se conserva; se elimina el vocabulario de SaaS genérico.",
+    "audience": "Encargado de almacén y administrador de una distribuidora de suministros de oficina en República Dominicana.",
+    "primary_job": "Ver en segundos qué falta, cuánto vale el inventario y qué se está consumiendo, y actuar sobre un producto.",
+    "color": {
+      "canvas": {
+        "hex": "#F2F5F9",
+        "role": "Fondo de la aplicación"
+      },
+      "surface": {
+        "hex": "#FFFFFF",
+        "role": "Sidebar, header, tarjetas y paneles"
+      },
+      "ink": {
+        "hex": "#101828",
+        "role": "Texto principal y cifras"
+      },
+      "muted": {
+        "hex": "#667085",
+        "role": "Etiquetas, metadatos, ejes y placeholders"
+      },
+      "line": {
+        "hex": "#E4E9F0",
+        "role": "Bordes de 1px y separadores"
+      },
+      "brand": {
+        "hex": "#1B48D6",
+        "role": "Acción primaria, barras, foco y enlaces"
+      },
+      "brandSoft": {
+        "hex": "#EAEFFC",
+        "role": "Fondo del ítem activo y del avatar"
+      },
+      "brandInk": {
+        "hex": "#1236A8",
+        "role": "Hover de acciones y barras"
+      },
+      "danger": {
+        "hex": "#B42318",
+        "role": "Bajo mínimo y cifras que requieren atención"
+      },
+      "dangerSoft": {
+        "hex": "#FDECEA",
+        "role": "Fondo de la insignia Bajo mínimo"
+      },
+      "success": {
+        "hex": "#067647",
+        "role": "Estado Disponible"
+      },
+      "successSoft": {
+        "hex": "#E7F4EC",
+        "role": "Fondo de la insignia Disponible"
+      },
+      "rowHover": {
+        "hex": "#F8FAFC",
+        "role": "Hover de fila"
+      },
+      "chartGrid": {
+        "hex": "#EDF1F6",
+        "role": "Líneas guía del gráfico"
+      }
+    },
+    "color_rules": [
+      "El cobalto es la única tinta de acción; no hay un segundo acento decorativo.",
+      "El rojo y el verde solo aparecen en estados de stock; nunca en botones ni cifras decorativas.",
+      "No se usan degradados, glassmorphism ni fondos de color a sangre.",
+      "Los iconos usan currentColor; ningún SVG lleva hex embebido."
+    ],
+    "typography": {
+      "family": "Archivo Variable",
+      "package": "@fontsource-variable/archivo",
+      "import": "@fontsource-variable/archivo/wdth.css",
+      "axes": "wght 100-900 y wdth 62-125; se importa wdth.css para habilitar font-stretch",
+      "stack": "'Archivo Variable', 'Archivo', ui-sans-serif, system-ui, sans-serif",
+      "numerals": "font-variant-numeric: tabular-nums en cifras, SKU, cantidades y precios",
+      "scale": [
+        {
+          "name": "kpi",
+          "size": "44px",
+          "lineHeight": "48px",
+          "weight": 600,
+          "stretch": "108%",
+          "tracking": "-0.03em"
+        },
+        {
+          "name": "page-title",
+          "size": "28px",
+          "lineHeight": "34px",
+          "weight": 600,
+          "stretch": "105%",
+          "tracking": "-0.02em"
+        },
+        {
+          "name": "section",
+          "size": "18px",
+          "lineHeight": "24px",
+          "weight": 600,
+          "stretch": "100%",
+          "tracking": "-0.01em"
+        },
+        {
+          "name": "body",
+          "size": "15px",
+          "lineHeight": "23px",
+          "weight": 400,
+          "stretch": "100%",
+          "tracking": "0"
+        },
+        {
+          "name": "table",
+          "size": "14px",
+          "lineHeight": "20px",
+          "weight": 400,
+          "stretch": "100%",
+          "tracking": "0"
+        },
+        {
+          "name": "meta",
+          "size": "12.5px",
+          "lineHeight": "18px",
+          "weight": 400,
+          "stretch": "100%",
+          "tracking": "0"
+        },
+        {
+          "name": "label",
+          "size": "13px",
+          "lineHeight": "18px",
+          "weight": 500,
+          "stretch": "100%",
+          "tracking": "0"
+        }
+      ]
+    },
+    "typography_rules": [
+      "Una sola familia con ancho variable; no se agrega una display serif ni una mono.",
+      "Las mayúsculas se limitan a SKU y siglas reales; ninguna etiqueta se escribe en ALL CAPS.",
+      "No hay eyebrows, kickers ni etiquetas tipográficas encima de las secciones.",
+      "Los títulos y cifras usan weight 600 y tracking negativo; el texto de UI usa 400/500.",
+      "Las líneas de cuerpo se mantienen por debajo de 80 caracteres."
+    ],
+    "layout": {
+      "shell": "Sidebar blanca de 240px fija y superficie principal sobre canvas frío. Header de 72px con borde inferior; el contenido tiene padding de 28px y max-width de 1360px.",
+      "summary": "Una sola banda de superficie con tres segmentos iguales separados por reglas verticales de 1px. Padding 24px. La etiqueta va arriba, la cifra al centro y la nota al pie.",
+      "content_grid": "minmax(0, 1.85fr) minmax(320px, 1fr) con gap de 20px. La tabla ocupa la columna ancha; el gráfico, la estrecha.",
+      "table": "Card con header de 64px y tabla de filas de 56px, separadores hairline, sin zebra, sin hover de tarjeta. Números alineados a la derecha.",
+      "alignment": "Textos y etiquetas alineados a la izquierda; cantidades, precios y mínimos a la derecha; encabezados numéricos alineados con su columna. Nada centrado salvo estados vacíos.",
+      "breakpoints": {
+        "content_stack": "1180px: el gráfico pasa debajo de la tabla y ocupa el ancho completo.",
+        "summary_stack": "720px: los tres segmentos se apilan con separadores horizontales.",
+        "table_cards": "768px: la tabla se convierte en tarjetas; aparece un select Ordenar por.",
+        "sidebar_drawer": "1024px: la sidebar pasa a drawer con overlay.",
+        "page_padding": "28px escritorio, 20px tablet, 16px móvil.",
+        "pagination_compact": "640px: solo anterior, Página X de Y y siguiente."
+      },
+      "wireframe": "┌────────────┬──────────────────────────────────────────────────────┐\n│ StockPilot │ Inventario            ◔  [Todos los almacenes ▾] [+] │\n│            ├──────────────────────────────────────────────────────┤\n│ ▸ Inventario│  Productos        │  Bajo mínimo     │ Valor total    │\n│   Reportes │  1,247            │  23              │ RD$ 4.2M       │\n│   Compras  │  en 3 almacenes   │  requieren rep.  │ a costo        │\n│   RRHH     │                   │                  │                │\n│            │  ┌──────────────────────────────┬──────────────────┐ │\n│            │  │ Stock por producto           │ Más consumidos   │ │\n│            │  │ [Buscar] [Exportar] [⚙]      │ [Últimos 30 días]│ │\n│            │  │ tabla · 8 filas · paginación │ gráfico · CTA    │ │\n│            │  └──────────────────────────────┴──────────────────┘ │\n│ Carlos M.  │                                                      │\n└────────────┴──────────────────────────────────────────────────────┘",
+      "measure": "Ancho de lectura de 62-72 caracteres en textos de cuerpo; las celdas de producto truncan a una línea con ellipsis y exponen el nombre completo en title."
+    },
+    "components": {
+      "sidebar": "Superficie blanca con borde derecho. Wordmark StockPilot de 20px con glifo de caja. Ítems de 40px, icono de 20px, activo con fondo brandSoft, texto brand y barra izquierda de 2px. Etiqueta Pronto en Compras y RRHH. Usuario al pie con avatar de iniciales.",
+      "header": "Fondo surface, borde inferior, sticky top 0. H1 de 28px a la izquierda; a la derecha campana de 40px con punto danger, select de almacén de 220px y botón primario Nuevo producto. En móvil: menú, título y campana; segunda fila con select y botón.",
+      "summary_band": "Superficie única, borde line, radio 10, sin sombra salvo 0 1px 2px rgba(16,24,40,.04). Tres columnas con separadores. Icono de línea de 16px junto a la etiqueta, cifra de 44px, nota de 12.5px. Bajo mínimo usa danger solo en la cifra.",
+      "table": "Header de columnas de 13px muted, weight 500, sentence case, altura 44px. Filas de 56px con borde inferior. Producto: thumb de 32px, nombre de 14px/500 y SKU de 12px muted. Stock actual y mínimo en tabular-nums; stock bajo en danger. Estado: insignia de 24px con radio 6, texto de 12.5px/500.",
+      "search": "Input de 36px con icono de 16px a la izquierda y botón de limpiar cuando hay texto. Placeholder Buscar por nombre o SKU. Borde line, radio 8; foco con anillo cobalto de 2px.",
+      "buttons": "Primario cobalto con texto blanco; secundario superficie con borde line; ghost sin borde. Altura 36px, radio 8, 14px/500, icono de 16px. Sin sombras. Hover brandInk o rowHover. Focus ring de 2px con offset 2px.",
+      "chart": "Card de superficie con barras SVG de cobalto, ancho máximo 44px y radio 4 arriba. Eje y de 0 a 1,200 con guías chartGrid y etiquetas de 11px. Valor sobre cada barra en 12px tabular. Etiquetas de producto de dos líneas con glifo de 28px. Sin leyenda.",
+      "status_pill": "Bajo mínimo: danger sobre dangerSoft. Disponible: success sobre successSoft. Texto siempre presente; el color no es el único indicador. Sin punto decorativo.",
+      "product_thumb": "Cuadrado de 32px, radio 6, fondo canvas, glifo de categoría de 18px en muted. Sustituible por imagen real sin cambiar la celda.",
+      "empty_state": "Icono de línea de 32px, título de 15px/600, explicación de 14px y una acción concreta. Centrado dentro del área de contenido, sin ilustraciones.",
+      "dialog": "Superficie de 560px, radio 12, borde line y sombra 0 24px 64px rgba(16,24,40,.18). Backdrop rgba(16,24,40,.40) sin blur. Campos de 36px, dos columnas en escritorio y una en móvil.",
+      "toast": "Superficie oscura ink con texto blanco, radio 8, 14px; aparece abajo a la derecha y se anuncia con aria-live polite. Se cierra a los 5s o con un botón."
+    },
+    "motion": {
+      "policy": "Un solo momento orquestado: las barras del gráfico crecen desde la línea base al recibir datos, 360ms, con 40ms de stagger. Nada más entra con fade-and-slide.",
+      "interactions": "Hover de fila y botones en 120ms; apertura de dialog y paneles en 160ms con opacidad y 8px de desplazamiento.",
+      "reduced_motion": "@media (prefers-reduced-motion: reduce) elimina crecimiento, desplazamientos y transiciones; los estados finales se muestran de inmediato."
+    },
+    "copy": {
+      "voice": "Español dominicano, sentence case, verbos directos y sin lenguaje de marketing. Una idea por elemento.",
+      "terms": {
+        "productos": "Productos",
+        "bajo_minimo": "Bajo mínimo",
+        "disponible": "Disponible",
+        "valor_total": "Valor del inventario",
+        "stock_actual": "Stock actual",
+        "minimo": "Mínimo",
+        "nuevo_producto": "Nuevo producto",
+        "exportar": "Exportar CSV",
+        "buscar": "Buscar por nombre o SKU",
+        "paginacion": "Mostrando {from} a {to} de {total} productos"
+      },
+      "microcopy": {
+        "search_empty": "No hay productos que coincidan con “{query}”. Prueba con otro nombre o SKU.",
+        "clear_search": "Limpiar búsqueda",
+        "warehouse_empty": "No hay productos en este almacén.",
+        "load_error": "No se pudo cargar el inventario. Revisa tu conexión e intenta de nuevo.",
+        "retry": "Reintentar",
+        "save_success": "Producto guardado. Ya aparece en el inventario.",
+        "save_error": "No se pudo guardar el producto. Intenta de nuevo.",
+        "export_success": "Se exportaron {count} productos.",
+        "notifications_empty": "Sin avisos. Todo el inventario está sobre el mínimo.",
+        "report_empty": "No hay consumo registrado en este periodo.",
+        "purchases_empty": "Compras todavía no está disponible. Mientras tanto, revisa el inventario y los reportes.",
+        "hr_empty": "RRHH todavía no está disponible. El inventario y los reportes ya están listos."
+      }
+    },
+    "accessibility": [
+      "Contraste mínimo 4.5:1 en texto y 3:1 en límites de controles.",
+      "Foco visible de 2px cobalto con offset 2px en todos los elementos interactivos.",
+      "Skip link a #contenido y foco al h1 tras cada navegación.",
+      "Tabla con caption oculto, th scope correcto y aria-sort en columnas ordenables.",
+      "Gráfico con figure, figcaption, title/desc y una tabla visualmente oculta con los mismos datos.",
+      "Dialog nativo con showModal, retorno de foco y cierre con Escape.",
+      "Estados asíncronos anunciados con aria-live polite; nunca depender solo del color.",
+      "Objetivos táctiles de 44px en móvil; zoom al 200% sin pérdida de contenido.",
+      "Lang es-DO y formatos de número/valor con Intl."
+    ],
+    "anti_patterns": [
+      "Tres tarjetas KPI idénticas con la misma sombra y cuadros pastel.",
+      "Degradados, glassmorphism, blobs o fondos decorativos.",
+      "Eyebrows en mayúsculas, etiquetas con middle dots y em dash decorativos.",
+      "Monospace para etiquetas de datos; Archivo tabular es suficiente.",
+      "Animaciones de entrada en cada sección o hover elevando tarjetas.",
+      "Iconos de relleno multicolor y emojis en la interfaz.",
+      "Números de KPI escritos a mano en el template."
+    ],
+    "critique": {
+      "risk": "El draft puede resolverse como un dashboard azul de plantilla: tres tarjetas iguales, sombras suaves y un gráfico de librería.",
+      "changes": [
+        "Resumen en una banda con separadores hairline en lugar de tres tarjetas flotantes: conserva la lectura de tres métricas y elimina el patrón de tarjetas clonadas.",
+        "Iconos de línea monocromos en lugar de cuadros pastel: menos decoración y más peso en las cifras.",
+        "Cero sombras difusas y cero degradados; la profundidad se resuelve con bordes y planos de color.",
+        "Archivo con eje de ancho para títulos y cifras; sin fuente display adicional ni etiquetas en mayúsculas.",
+        "Gráfico SVG propio con cifras tabulares y tabla accesible oculta, en lugar de una librería con estilo ajeno.",
+        "Sidebar de 240px en vez de los ~155px del draft, para etiquetas en español y objetivos táctiles de 44px.",
+        "Paginación derivada de los datos; el 'de 25' del draft se trata como placeholder y el seed tiene 1,247 registros."
+      ],
+      "kept": [
+        "Jerarquía del draft: sidebar, header, resumen de tres métricas, tabla ancha y gráfico lateral.",
+        "Cobalto como única tinta de acción.",
+        "Fondo claro, superficies blancas y bordes finos.",
+        "Insignias de estado con color semántico y texto.",
+        "Nombre, SKU y almacén por producto, con cifras alineadas a la derecha."
+      ]
+    }
+  },
+  "mock_data": {
+    "entities": {
+      "Warehouse": [
+        "id: 'principal' | 'santiago' | 'santo-domingo'",
+        "name: 'Almacén Principal' | 'Almacén Santiago' | 'Almacén Santo Domingo'",
+        "shortName: 'Principal' | 'Santiago' | 'Santo Domingo'"
+      ],
+      "Product": [
+        "id: string",
+        "sku: string único, formato AAA-AAA-000",
+        "name: string",
+        "category: una de las 9 categorías del seed",
+        "unitCost: number en DOP"
+      ],
+      "StockRow": [
+        "productId, sku, name, category",
+        "warehouseId, warehouseName",
+        "onHand: number entero",
+        "minStock: number entero",
+        "unitCost: number",
+        "status: 'low' | 'available', derivado de onHand < minStock"
+      ],
+      "InventorySummary": [
+        "products: number",
+        "lowStock: number",
+        "inventoryValue: number en DOP"
+      ],
+      "TopConsumedItem": [
+        "productId, name, category",
+        "units: number",
+        "share: number entre 0 y 1"
+      ],
+      "StockQuery": [
+        "warehouseId: WarehouseId | 'all'",
+        "search: string",
+        "page: number",
+        "pageSize: number",
+        "sort: { field: 'name' | 'warehouse' | 'onHand' | 'minStock' | 'status'; direction: 'asc' | 'desc' } | null; null conserva el orden del catálogo"
+      ],
+      "PageResult<T>": [
+        "items: T[]",
+        "total: number",
+        "page: number",
+        "pageSize: number"
+      ],
+      "NewProductInput": [
+        "name, sku, category, warehouseId",
+        "onHand, minStock, unitCost"
+      ],
+      "InventoryError": [
+        "code: 'network' | 'not_found' | 'validation' | 'unknown'",
+        "message: string en español para la interfaz"
+      ]
+    },
+    "seed": {
+      "generator": "mulberry32 con semilla fija 20261029, ejecutado una vez al cargar el módulo. Prohibido Math.random durante el render.",
+      "counts": {
+        "products": 1247,
+        "lowStock": 23,
+        "totalValueDop": 4236480,
+        "consumedLast30d": 4100
+      },
+      "distribution": {
+        "principal": 748,
+        "santiago": 312,
+        "santo-domingo": 187,
+        "lowStockByWarehouse": {
+          "principal": 14,
+          "santiago": 6,
+          "santo-domingo": 3
+        }
+      },
+      "categories": [
+        "Papel",
+        "Periféricos",
+        "Monitores",
+        "Impresión",
+        "Tinta",
+        "Archivo",
+        "Adhesivos",
+        "Escritura",
+        "Accesorios"
+      ],
+      "firstEightRows": [
+        {
+          "sku": "PAP-A4-75",
+          "name": "Papel Bond A4 75g",
+          "category": "Papel",
+          "warehouseId": "principal",
+          "onHand": 120,
+          "minStock": 200,
+          "unitCost": 285
+        },
+        {
+          "sku": "MOU-WL-001",
+          "name": "Mouse Inalámbrico",
+          "category": "Periféricos",
+          "warehouseId": "principal",
+          "onHand": 35,
+          "minStock": 50,
+          "unitCost": 950
+        },
+        {
+          "sku": "TEC-USB-001",
+          "name": "Teclado USB",
+          "category": "Periféricos",
+          "warehouseId": "santiago",
+          "onHand": 80,
+          "minStock": 50,
+          "unitCost": 720
+        },
+        {
+          "sku": "MON-24-001",
+          "name": "Monitor 24\"",
+          "category": "Monitores",
+          "warehouseId": "principal",
+          "onHand": 18,
+          "minStock": 20,
+          "unitCost": 8900
+        },
+        {
+          "sku": "IMP-LAS-HP",
+          "name": "Impresora Láser HP",
+          "category": "Impresión",
+          "warehouseId": "santo-domingo",
+          "onHand": 7,
+          "minStock": 10,
+          "unitCost": 12500
+        },
+        {
+          "sku": "TIN-664-BK",
+          "name": "Tinta Negra 664",
+          "category": "Tinta",
+          "warehouseId": "santiago",
+          "onHand": 150,
+          "minStock": 100,
+          "unitCost": 1250
+        },
+        {
+          "sku": "CAR-ARCH-001",
+          "name": "Carpeta Archivadora",
+          "category": "Archivo",
+          "warehouseId": "santo-domingo",
+          "onHand": 300,
+          "minStock": 150,
+          "unitCost": 145
+        },
+        {
+          "sku": "CIN-2-001",
+          "name": "Cinta Adhesiva 2\"",
+          "category": "Adhesivos",
+          "warehouseId": "principal",
+          "onHand": 22,
+          "minStock": 30,
+          "unitCost": 210
+        }
+      ],
+      "topConsumed30d": [
+        {
+          "name": "Papel Bond A4 75g",
+          "units": 1120
+        },
+        {
+          "name": "Tinta Negra 664",
+          "units": 860
+        },
+        {
+          "name": "Carpeta Archivadora",
+          "units": 640
+        },
+        {
+          "name": "Cinta Adhesiva 2\"",
+          "units": 480
+        },
+        {
+          "name": "Bolígrafo Azul",
+          "units": 320
+        }
+      ],
+      "periodVariants": {
+        "7d": "Cada valor de 30d se multiplica por 0.28 y se redondea; el orden se conserva.",
+        "90d": "Cada valor de 30d se multiplica por 2.6 y se redondea; el orden se conserva."
+      },
+      "thumbnails": "Un glifo SVG por categoría; no hay archivos de imagen en el MVP.",
+      "currency_target": "La suma de onHand × unitCost debe quedar entre 4.15M y 4.25M DOP para formatear RD$ 4.2M."
+    },
+    "queries": [
+      "getWarehouses(): Promise<Warehouse[]>",
+      "getSummary(warehouseId): Promise<InventorySummary>",
+      "getStockPage(query: StockQuery): Promise<PageResult<StockRow>>",
+      "getTopConsumed(warehouseId, range, limit): Promise<TopConsumedItem[]>",
+      "getConsumptionReport(warehouseId, range): Promise<{ items: TopConsumedItem[]; totalUnits: number }>",
+      "getLowStockAlerts(warehouseId, limit): Promise<StockRow[]>",
+      "createProduct(input: NewProductInput): Promise<StockRow>"
+    ],
+    "api_contract_preview": {
+      "note": "El mock debe devolver las mismas formas que estos endpoints. En la fase 4 solo cambia el proveedor.",
+      "endpoints": [
+        "GET /api/inventory/summary?warehouseId=all",
+        "GET /api/inventory/stock?warehouseId=all&search=&page=1&pageSize=8 (sin sort se conserva el orden del catálogo)",
+        "GET /api/inventory/consumption/top?warehouseId=all&range=30d&limit=5",
+        "GET /api/inventory/consumption/report?warehouseId=all&range=30d",
+        "GET /api/inventory/alerts?warehouseId=all&limit=5",
+        "POST /api/products",
+        "GET /api/warehouses"
+      ],
+      "error_shape": {
+        "code": "string",
+        "message": "string"
+      }
+    }
+  },
+  "phases": [
+    {
+      "id": "phase-0",
+      "name": "Fundaciones",
+      "goal": "Dejar el esqueleto Angular 21, el sistema visual y la capa de datos mock listos para construir la pantalla sin retrabajo.",
+      "included_in_mvp": true,
+      "exit_criteria": [
+        "La app navega entre las cuatro secciones sin rutas muertas.",
+        "Los tokens, la tipografía y el foco global se aplican en toda la app.",
+        "El repositorio mock devuelve 1,247 productos con cifras derivadas y escenarios de error.",
+        "npm run build y npm test pasan."
+      ],
+      "feature_ids": ["F-001", "F-002", "F-003", "F-004", "F-005", "F-006", "F-007"]
+    },
+    {
+      "id": "phase-1",
+      "name": "Panel de inventario",
+      "goal": "Reproducir el panel del draft con datos del mock, en escritorio y móvil, con búsqueda, orden y paginación reales.",
+      "included_in_mvp": true,
+      "exit_criteria": [
+        "El resumen, la tabla y el gráfico comparten el mismo alcance de almacén.",
+        "La tabla muestra 1,247 productos paginados de 8 en 8 y las ocho filas del draft en la primera página.",
+        "El gráfico reproduce los cinco valores del draft en 30 días.",
+        "A 360px no hay scroll horizontal y la tabla se convierte en tarjetas.",
+        "Los estados de carga, vacío y error se pueden provocar con ?mock=."
+      ],
+      "feature_ids": ["F-101", "F-102", "F-103", "F-104", "F-105", "F-106"]
+    },
+    {
+      "id": "phase-2",
+      "name": "Acciones y secciones secundarias",
+      "goal": "Convertir los controles del draft en acciones completas y dar destino a Ver reporte completo sin salir del alcance mock.",
+      "included_in_mvp": true,
+      "exit_criteria": [
+        "Crear un producto lo inserta en la tabla y actualiza el resumen sin recargar.",
+        "Exportar CSV descarga todas las filas filtradas y respeta las columnas visibles.",
+        "Las preferencias de columnas sobreviven a una recarga.",
+        "El panel de avisos lleva a la tabla ordenada por Bajo mínimo.",
+        "Reportes, Compras y RRHH son rutas navegables con estados honestos."
+      ],
+      "feature_ids": ["F-201", "F-202", "F-203", "F-204", "F-205", "F-206"]
+    },
+    {
+      "id": "phase-3",
+      "name": "Calidad y entrega",
+      "goal": "Cerrar accesibilidad, pruebas, performance, copy y revisión visual antes de declarar el MVP terminado.",
+      "included_in_mvp": true,
+      "exit_criteria": [
+        "Recorrido completo con teclado y lector de pantalla sin bloqueos.",
+        "Pruebas de repositorio, store, formateo y CSV en verde.",
+        "Build de producción dentro de presupuesto y sin warnings nuevos.",
+        "Copy revisado en es-DO y capturas de las cuatro anchuras archivadas.",
+        "No quedan diferencias no documentadas contra el draft."
+      ],
+      "feature_ids": ["F-301", "F-302", "F-303", "F-304", "F-305"]
+    },
+    {
+      "id": "phase-4",
+      "name": "Integración con API NestJS",
+      "goal": "Sustituir el mock por la API real sin tocar componentes de pantalla, en la segunda interacción del proyecto.",
+      "included_in_mvp": false,
+      "exit_criteria": [
+        "InventoryRepository se resuelve con HttpInventoryRepository mediante un switch de entorno.",
+        "Los DTO de NestJS coinciden con los modelos del frontend y los errores se mapean a InventoryError.",
+        "Paginación, búsqueda y creación funcionan contra el servidor.",
+        "Login y roles protegen las acciones de escritura."
+      ],
+      "feature_ids": ["F-401", "F-402", "F-403", "F-404"]
+    }
+  ],
+  "features": [
+    {
+      "id": "F-001",
+      "phase": "phase-0",
+      "title": "App shell y navegación",
+      "category": "functional",
+      "description": "Construir el marco persistente de StockPilot: sidebar, header de página y rutas lazy para Inventario, Reportes, Compras y RRHH, con Inventario como entrada.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": [],
+      "files": [
+        "src/app/app.ts",
+        "src/app/app.html",
+        "src/app/app.css",
+        "src/app/app.routes.ts",
+        "src/app/layout/shell/*",
+        "src/app/layout/sidebar/*",
+        "src/app/layout/page-header/*",
+        "src/app/features/reports/reports-page.*",
+        "src/app/features/purchases/purchases-page.*",
+        "src/app/features/hr/hr-page.*"
+      ],
+      "steps": [
+        "Reemplazar la plantilla de Angular por un ShellComponent con sidebar fija, main y router-outlet.",
+        "Definir rutas lazy /inventario, /reportes, /compras y /rrhh, más wildcard a /inventario, cada una con title; Reportes, Compras y RRHH usan un stub mínimo con h1 y copy provisional hasta F-205 y F-206.",
+        "Construir la sidebar con wordmark StockPilot, glifo de caja, ítems Inventario, Reportes, Compras y RRHH con iconos de línea de 20px y estado activo en brandSoft con barra de 2px.",
+        "Agregar el bloque de usuario al pie con avatar de iniciales, Carlos M. y Administrador; las etiquetas Pronto aparecen en Compras y RRHH.",
+        "Implementar por debajo de 1024px un drawer con botón Abrir menú, overlay, cierre con Escape, bloqueo de scroll y retorno de foco al disparador.",
+        "Añadir un skip link a #contenido y mover el foco al h1 en cada cambio de ruta."
+      ],
+      "acceptance_criteria": [
+        "/ redirige a /inventario; la ruta activa se marca en la sidebar y el título del documento cambia por sección.",
+        "Con teclado se alcanza el skip link, la navegación y el contenido; el foco es visible en todo momento.",
+        "A 360px no hay scroll horizontal; el drawer se abre y se cierra con teclado y con clic en el overlay.",
+        "Las cuatro secciones resuelven una página (Reportes, Compras y RRHH como stubs) y no queda ningún enlace muerto."
+      ],
+      "verification": [
+        "npm run build",
+        "manual: navegación con Tab y Shift+Tab a 360, 768 y 1440px"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-002",
+      "phase": "phase-0",
+      "title": "Tokens visuales y tipografía",
+      "category": "design",
+      "description": "Instalar la identidad tipográfica y convertir el plan de diseño en tokens de Tailwind 4: color, escala, foco, numerales tabulares y base global.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-001"],
+      "files": [
+        "package.json",
+        "src/styles.css",
+        "src/index.html",
+        "src/app/app.config.ts"
+      ],
+      "steps": [
+        "Instalar @fontsource-variable/archivo@^5.3.0 e importar @fontsource-variable/archivo/wdth.css antes de tailwindcss en styles.css.",
+        "Definir en @theme los tokens de color del plan (canvas, surface, ink, muted, line, brand, brandSoft, brandInk, danger, dangerSoft, success, successSoft, rowHover, chartGrid) y --font-sans con el stack de Archivo.",
+        "Agregar la escala tipográfica como utilidades: display-num para cifras de 44px con font-stretch 108% y tracking -0.03em, page-title de 28px, section de 18px, body de 15px, table de 14px, meta de 12.5px.",
+        "En la capa base, fijar body con bg-canvas, text-ink, antialiased, font-variant-numeric tabular-nums; color-scheme light; selection con brandSoft.",
+        "Definir :focus-visible global con outline de 2px brand y offset 2px, y desactivar transiciones y animaciones bajo prefers-reduced-motion.",
+        "Actualizar index.html a lang=es-DO, title StockPilot y meta description; eliminar la fuente Inter del template."
+      ],
+      "acceptance_criteria": [
+        "Los componentes usan clases de token (bg-surface, text-muted, border-line, bg-brand) y no contienen hex sueltos.",
+        "La fuente se sirve localmente desde @fontsource; no hay requests a fonts.googleapis.com.",
+        "Las cifras usan numerals tabulares y la cifra KPI se ve expandida a wdth 108%.",
+        "El foco con teclado es visible en botones, inputs, selects y enlaces.",
+        "Con prefers-reduced-motion activo no se ejecuta ninguna transición de movimiento."
+      ],
+      "verification": [
+        "npm run build",
+        "manual: DevTools > Rendering > prefers-reduced-motion",
+        "manual: inspeccionar que no haya requests de fuentes externas"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-003",
+      "phase": "phase-0",
+      "title": "Modelos y contrato de repositorio",
+      "category": "data",
+      "description": "Definir los tipos de dominio, el contrato InventoryRepository y los formateadores es-DO que usarán todas las pantallas.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-001"],
+      "files": [
+        "src/app/core/models/inventory.models.ts",
+        "src/app/core/data/inventory.repository.ts",
+        "src/app/core/format/inventory-format.ts",
+        "src/app/core/format/inventory-format.spec.ts"
+      ],
+      "steps": [
+        "Crear Warehouse, Product, StockRow, InventorySummary, TopConsumedItem, StockQuery, PageResult<T>, NewProductInput, ConsumptionRange e InventoryError.",
+        "Derivar StockStatus en un helper único a partir de onHand < minStock; no repetir la comparación en componentes.",
+        "Declarar InventoryRepository como clase abstracta inyectable con getWarehouses, getSummary, getStockPage, getTopConsumed, getConsumptionReport, getLowStockAlerts y createProduct.",
+        "Implementar formatNumber, formatCurrency, formatCompactCurrency (RD$ 4.2M), formatRange y normalizarTexto para búsquedas sin acentos.",
+        "Escribir pruebas de formateo para 1,247; 4,236,480; 0; y nombres con acentos."
+      ],
+      "acceptance_criteria": [
+        "El proyecto compila en strict sin any explícitos en los modelos ni en el contrato.",
+        "InventoryRepository no importa nada del mock ni de Angular HTTP.",
+        "formatNumber(1247) devuelve 1,247 y formatCompactCurrency(4236480) devuelve RD$ 4.2M.",
+        "normalizarTexto('Bolígrafo Azul') permite buscar 'boligrafo' y 'BOLIGRAFO'.",
+        "Las pruebas de formateo pasan con npm test."
+      ],
+      "verification": ["npm run build", "npm test"],
+      "passes": false
+    },
+    {
+      "id": "F-004",
+      "phase": "phase-0",
+      "title": "Repositorio mock y dataset determinista",
+      "category": "data",
+      "description": "Implementar MockInventoryRepository con 1,247 productos, tres almacenes, 23 bajo mínimo, valor total de RD$ 4.2M y los cinco consumos del draft.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-003"],
+      "files": [
+        "src/app/core/data/mock-inventory.repository.ts",
+        "src/app/core/data/seed/inventory.seed.ts",
+        "src/app/core/data/seed/consumption.seed.ts",
+        "src/app/core/mock/mock-scenario.ts"
+      ],
+      "steps": [
+        "Crear el seed con un PRNG mulberry32 de semilla 20261029, ejecutado una vez al cargar el módulo, y generar exactamente 1,247 productos distribuidos 748/312/187 entre Principal, Santiago y Santo Domingo.",
+        "Fijar las ocho primeras filas con los valores del draft y asignar exactamente 23 productos con onHand menor que minStock, 14/6/3 por almacén.",
+        "Ajustar los costos unitarios para que la suma de onHand × unitCost quede entre 4.15M y 4.25M DOP.",
+        "Definir los cinco consumos de 30 días con 1,120, 860, 640, 480 y 320 unidades, y derivar 7d y 90d con los factores del seed.",
+        "Implementar las consultas con latencia simulada de 220ms, copias inmutables y filtrado por almacén, búsqueda normalizada, orden y paginación.",
+        "Implementar createProduct con validación de SKU único, inserción al inicio y recálculo de resumen.",
+        "Leer ?mock=empty|error|slow al iniciar y exponer escenarios mediante MockScenarioService; error rechaza con InventoryError."
+      ],
+      "acceptance_criteria": [
+        "getStockPage({ warehouseId: 'all', page: 1, pageSize: 8, sort: null }) devuelve 8 filas, total 1,247 y las ocho filas del draft en orden.",
+        "getSummary('all') devuelve products 1,247, lowStock 23 y un valor que formatea como RD$ 4.2M.",
+        "getTopConsumed('all', '30d', 5) devuelve exactamente los cinco valores del draft.",
+        "Filtrar por santiago reduce el total a 312 y por santo-domingo a 187.",
+        "Crear un producto con SKU único lo coloca en la primera página y sube total y resumen; un SKU repetido rechaza con validation.",
+        "?mock=error muestra un rechazo con InventoryError y ?mock=slow tarda al menos 1.5s; ?mock=empty devuelve colecciones vacías."
+      ],
+      "verification": [
+        "npm test",
+        "manual: abrir ?mock=error, ?mock=empty y ?mock=slow"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-005",
+      "phase": "phase-0",
+      "title": "Primitivas de interfaz",
+      "category": "design",
+      "description": "Construir los componentes compartidos que sostienen el panel: botón, icon button, search field, select, status pill, pagination, empty state, skeleton, product thumb, icono y toast.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-002"],
+      "files": [
+        "src/app/shared/ui/button/*",
+        "src/app/shared/ui/icon-button/*",
+        "src/app/shared/ui/search-field/*",
+        "src/app/shared/ui/select-field/*",
+        "src/app/shared/ui/status-pill/*",
+        "src/app/shared/ui/pagination/*",
+        "src/app/shared/ui/empty-state/*",
+        "src/app/shared/ui/skeleton/*",
+        "src/app/shared/ui/product-thumb/*",
+        "src/app/shared/ui/icon/*",
+        "src/app/shared/ui/toast/*"
+      ],
+      "steps": [
+        "Implementar Button con variantes primary, secondary y ghost, tamaños 32/36/40 y estado loading con aria-busy.",
+        "Implementar IconButton con aria-label obligatorio y tooltip nativo en title; SearchField con icono, botón Limpiar y emisión de valor; SelectField estilizado sobre <select> nativo.",
+        "Implementar StatusPill con Bajo mínimo y Disponible, texto siempre visible y contraste verificado.",
+        "Implementar Pagination con page, totalPages, total y pageChange; soporte de elipsis y modo compacto Página X de Y.",
+        "Implementar EmptyState, Skeleton y ProductThumb; el thumb usa el registro de iconos por categoría con fallback a iniciales.",
+        "Crear IconComponent con un registro de 24 glifos de línea inline, stroke 1.6, currentColor y tamaños 16/20/24; sin dependencias externas.",
+        "Implementar Toast con aria-live polite, autocierre a los 5s, botón Cerrar y pausa del temporizador al pasar el cursor."
+      ],
+      "acceptance_criteria": [
+        "Cada primitiva se puede recorrer y operar solo con teclado.",
+        "Button e IconButton muestran foco visible y respetan disabled y loading.",
+        "La paginación calcula correctamente 1,247 elementos con pageSize 8 y emite la página seleccionada.",
+        "StatusPill no comunica el estado solo con color y su texto es Bajo mínimo o Disponible.",
+        "Ni las primitivas ni los iconos contienen colores hardcodeados fuera de tokens.",
+        "A 360px los controles táctiles miden al menos 44px."
+      ],
+      "verification": [
+        "npm run build",
+        "npm test",
+        "manual: recorrido de teclado en una página de muestra"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-006",
+      "phase": "phase-0",
+      "title": "Estados de carga, vacío y error",
+      "category": "design",
+      "description": "Definir un patrón único para cargar, vaciar y fallar, con skeletons que conservan el layout y acciones concretas de recuperación.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-005"],
+      "files": [
+        "src/app/shared/ui/empty-state/*",
+        "src/app/shared/ui/skeleton/*",
+        "src/app/shared/ui/error-panel/*",
+        "src/app/shared/ui/async-state.css"
+      ],
+      "steps": [
+        "Especificar y construir skeletons del resumen, la tabla y el gráfico con las mismas dimensiones del contenido final para evitar salto de layout.",
+        "Crear un ErrorPanel con el copy load_error, botón Reintentar y aria-live assertive solo al aparecer.",
+        "Crear variantes de EmptyState: búsqueda sin resultados con Limpiar búsqueda, almacén vacío con Ver todos los almacenes y gráfico sin consumo.",
+        "Usar role=status y aria-busy en las regiones que cargan; no usar un spinner de página completa.",
+        "Documentar en el CSS compartido las medidas de skeleton y el pulso de opacidad, desactivado con reduced motion."
+      ],
+      "acceptance_criteria": [
+        "Durante la carga inicial se ven skeletons con la misma altura que el contenido final y no hay layout shift perceptible.",
+        "Un error de repositorio muestra el panel con copy en español y el botón Reintentar vuelve a pedir los datos.",
+        "Una búsqueda sin resultados muestra la consulta y limpia el filtro desde la acción.",
+        "Los estados se pueden ver con ?mock=slow, ?mock=error y una búsqueda sin coincidencias.",
+        "Los mensajes se anuncian a lectores de pantalla sin repetirse en cada cambio."
+      ],
+      "verification": [
+        "manual: ?mock=slow, ?mock=error y búsqueda imposible",
+        "manual: revisar announcements con lector de pantalla"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-007",
+      "phase": "phase-0",
+      "title": "Convenciones Angular y base de pruebas",
+      "category": "quality",
+      "description": "Alinear el proyecto a Angular 21 zoneless con signals, OnPush y pruebas de humo antes de construir pantallas.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-001"],
+      "files": [
+        "src/app/app.spec.ts",
+        "src/app/app.config.ts",
+        "src/test-setup.ts",
+        "angular.json",
+        "tsconfig.spec.json"
+      ],
+      "steps": [
+        "Confirmar que la app corre sin zone.js (Angular 21) y no agregarlo como dependencia.",
+        "Aplicar ChangeDetectionStrategy.OnPush a todos los componentes existentes y usar input()/output() con signals.",
+        "Eliminar CommonModule, NgModule y directivas estructurales; usar @if, @for y @switch.",
+        "Reescribir app.spec.ts como prueba de humo del shell y agregar un helper de render que provea el repositorio mock.",
+        "Verificar que ng test usa Vitest y falla si una prueba queda en rojo, sin modo watch en CI."
+      ],
+      "acceptance_criteria": [
+        "No existe zone.js en package.json ni en el bundle.",
+        "Todos los componentes del shell declaran OnPush.",
+        "No quedan NgModule, CommonModule ni *ngIf/*ngFor en el código nuevo.",
+        "app.spec.ts renderiza el shell y pasa con npm test.",
+        "El build de producción no emite warnings de presupuesto."
+      ],
+      "verification": ["npm run build", "npm test"],
+      "passes": false
+    },
+    {
+      "id": "F-101",
+      "phase": "phase-1",
+      "title": "Header de inventario y alcance de almacén",
+      "category": "functional",
+      "description": "Construir el header del panel con título, campana, selector de almacén y acción primaria, y conectar el almacén al estado compartido de la pantalla.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-001", "F-005", "F-004"],
+      "files": [
+        "src/app/layout/page-header/*",
+        "src/app/features/inventory/inventory-page.*",
+        "src/app/features/inventory/inventory.store.ts"
+      ],
+      "steps": [
+        "Crear InventoryStore con señales warehouseId, search, page, pageSize, sort, rows, summary, topConsumed, total, loading y error.",
+        "Renderizar el header sticky con h1 Inventario, campana de 40px con punto danger cuando hay avisos sin leer, select de almacén y botón Nuevo producto.",
+        "Cargar los tres almacenes desde el repositorio y usar 'all' como valor inicial con la etiqueta Todos los almacenes.",
+        "Al cambiar de almacén, recargar resumen, tabla, avisos y gráfico con una sola señal de alcance; resetear page a 1.",
+        "Manejar respuestas fuera de orden con un id de petición para que una búsqueda vieja no sobrescriba la nueva.",
+        "En móvil, reorganizar en dos filas: menú, título y campana; select y Nuevo producto debajo."
+      ],
+      "acceptance_criteria": [
+        "El selector lista Principal, Santiago y Santo Domingo, y Todos los almacenes por defecto.",
+        "Cambiar a Santiago actualiza KPIs, tabla, footer y gráfico sin recargar la página.",
+        "La campana muestra el punto solo cuando hay avisos sin leer en el alcance actual y lo oculta al marcarlos.",
+        "Nuevo producto queda visible y enfocable; su acción se completa en F-201.",
+        "El header conserva su jerarquía a 1440, 768 y 390px sin desbordar.",
+        "Las respuestas lentas no muestran datos de un almacén anterior."
+      ],
+      "verification": [
+        "manual: cambiar almacén con ?mock=slow",
+        "manual: 1440, 768 y 390px"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-102",
+      "phase": "phase-1",
+      "title": "Banda de resumen con cifras derivadas",
+      "category": "functional",
+      "description": "Construir la banda de tres métricas del inventario con valores calculados desde el repositorio y tipografía tabular.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-005", "F-101", "F-004"],
+      "files": [
+        "src/app/features/inventory/components/summary-band/*"
+      ],
+      "steps": [
+        "Renderizar una superficie única con tres segmentos iguales separados por reglas verticales de 1px y radio 10.",
+        "Mostrar Productos con la cifra derivada y la nota en 3 almacenes cuando el alcance es Todos, o en {almacén} cuando hay uno seleccionado; Bajo mínimo con 23 y requieren reposición; Valor del inventario con RD$ 4.2M y a costo.",
+        "Pintar la cifra de Bajo mínimo en danger solo cuando sea mayor que cero; el resto en ink.",
+        "Usar display-num de 44px, wdth 108 y tabular-nums; etiqueta label de 13px muted y nota meta de 12.5px.",
+        "Añadir un icono de línea de 16px junto a cada etiqueta: caja, alerta y billetera, en muted.",
+        "En menos de 720px, apilar los segmentos con separadores horizontales y mantener las cifras a la izquierda."
+      ],
+      "acceptance_criteria": [
+        "Las tres cifras provienen de getSummary y cambian al filtrar por almacén; la nota de Productos pasa de en 3 almacenes a en Santiago.",
+        "No hay valores de KPI escritos directamente en el template.",
+        "La banda es una sola superficie sin sombras difusas ni tarjetas internas.",
+        "El lector de pantalla anuncia etiqueta, cifra y nota como una unidad por segmento.",
+        "A 390px los tres segmentos se apilan sin truncar cifras ni notas."
+      ],
+      "verification": [
+        "manual: comparar contra el draft",
+        "manual: cambiar almacén y verificar los totales"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-103",
+      "phase": "phase-1",
+      "title": "Tabla de stock por producto",
+      "category": "functional",
+      "description": "Construir la tabla del draft con producto, SKU, almacén, stock actual, mínimo y estado, usando semántica de tabla y cifras tabulares.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-005", "F-101", "F-004"],
+      "files": [
+        "src/app/features/inventory/components/stock-table/*",
+        "src/app/features/inventory/components/product-cell/*"
+      ],
+      "steps": [
+        "Crear la card Stock por producto con header de 64px y tabla de cinco columnas: Producto, Almacén, Stock actual, Mínimo y Estado.",
+        "Renderizar cada producto con thumb de 32px, nombre de 14px/500 truncado a una línea y SKU de 12px muted con tabular-nums.",
+        "Alinear stock actual, mínimo y encabezados numéricos a la derecha; usar danger en el stock cuando está bajo mínimo.",
+        "Renderizar StatusPill con Bajo mínimo o Disponible, sin depender del color.",
+        "Definir filas de 56px, separadores hairline, hover rowHover y sin zebra; usar <caption> oculto.",
+        "Preparar slots de toolbar para búsqueda, exportación y preferencias sin mostrar controles muertos."
+      ],
+      "acceptance_criteria": [
+        "La primera página muestra las ocho filas del draft con los mismos nombres, SKUs, almacenes, cifras y estados.",
+        "La tabla usa table, caption, thead, tbody, th scope=col y td; no divs con role de tabla.",
+        "Los números están alineados a la derecha y usan tabular-nums.",
+        "Un producto con onHand menor que minStock muestra Bajo mínimo y su cifra en danger.",
+        "Los nombres largos truncan con ellipsis y exponen el nombre completo en title.",
+        "La tabla no rompe el ancho de la card ni genera scroll horizontal a 1024px."
+      ],
+      "verification": [
+        "manual: comparar la primera página con docs/StockPilot-draft.PNG",
+        "manual: inspeccionar semántica de tabla"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-104",
+      "phase": "phase-1",
+      "title": "Búsqueda, orden y paginación",
+      "category": "functional",
+      "description": "Hacer operativa la tabla: búsqueda por nombre o SKU con debounce, orden por columnas, paginación de 8 y conteo real de resultados.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-103"],
+      "files": [
+        "src/app/features/inventory/components/stock-toolbar/*",
+        "src/app/features/inventory/components/stock-table/*",
+        "src/app/features/inventory/inventory.store.ts"
+      ],
+      "steps": [
+        "Añadir SearchField de 280px con placeholder Buscar por nombre o SKU, debounce de 200ms y botón Limpiar.",
+        "Normalizar acentos y mayúsculas en la búsqueda; aplicar el filtro junto con el almacén antes de paginar.",
+        "Mantener el orden de catálogo del seed como estado inicial; hacer ordenables Producto, Almacén, Stock actual, Mínimo y Estado, alternar asc/desc y reflejar aria-sort.",
+        "Implementar paginación de 8 elementos con anterior, números, elipsis y siguiente; resetear a página 1 al buscar, ordenar o cambiar de almacén.",
+        "Mostrar Mostrando 1 a 8 de 1,247 productos, con singular correcto y modo compacto Página X de Y por debajo de 640px.",
+        "Añadir un select Ordenar por visible solo en la vista de tarjetas móvil."
+      ],
+      "acceptance_criteria": [
+        "Escribir tinta devuelve coincidencias por nombre y SKU sin recargar y después del debounce.",
+        "Buscar carpeta y CARPETA produce el mismo resultado; buscar con acento y sin acento también.",
+        "Ordenar por Stock actual alterna ascendente y descendente y actualiza aria-sort.",
+        "El footer dice Mostrando 1 a 8 de 1,247 productos y la paginación permite llegar a la última página.",
+        "Cambiar de almacén o buscar resetea la página a 1 y nunca deja una página fuera de rango.",
+        "La paginación funciona solo con teclado y anuncia la página actual."
+      ],
+      "verification": [
+        "npm test",
+        "manual: búsqueda, orden y última página"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-105",
+      "phase": "phase-1",
+      "title": "Gráfico de productos más consumidos",
+      "category": "functional",
+      "description": "Construir el gráfico de barras del draft en SVG propio, con selector de periodo, tooltips accesibles y el CTA Ver reporte completo.",
+      "priority": "P0",
+      "mvp": true,
+      "depends_on": ["F-005", "F-101", "F-004"],
+      "files": [
+        "src/app/features/inventory/components/top-consumed-chart/*"
+      ],
+      "steps": [
+        "Crear la card con título Productos más consumidos y select Últimos 7 días, Últimos 30 días y Últimos 90 días; 30 días por defecto.",
+        "Dibujar un SVG responsive con eje y de 0 a 1,200 en pasos de 200, guías chartGrid, barras brand de ancho máximo 44px y radio 4 arriba.",
+        "Colocar el valor exacto sobre cada barra en 12px tabular y la etiqueta de producto en dos líneas con glifo de categoría de 28px.",
+        "Añadir tooltip en hover y focus con el nombre y las unidades; barras focusables con aria-label.",
+        "Incluir figure y figcaption, title/desc del SVG y una tabla visualmente oculta con los mismos datos.",
+        "Animar el crecimiento de las barras una sola vez al recibir datos, 360ms con stagger de 40ms, y desactivarlo con reduced motion.",
+        "Añadir el botón secundario Ver reporte completo a ancho completo en el pie de la card; navega a /reportes en F-205."
+      ],
+      "acceptance_criteria": [
+        "En 30 días las barras muestran 1,120, 860, 640, 480 y 320 unidades para los cinco productos del draft.",
+        "El gráfico escala correctamente y no recorta etiquetas a 320px de ancho.",
+        "Cada barra se alcanza con teclado y anuncia producto y unidades.",
+        "La tabla oculta contiene los mismos cinco registros que el SVG.",
+        "Cambiar a 7 o 90 días recalcula los valores del gráfico y actualiza la etiqueta del periodo.",
+        "Con reduced motion las barras aparecen en su altura final sin animación."
+      ],
+      "verification": [
+        "manual: comparar valores y proporciones con el draft",
+        "manual: navegar las barras con teclado",
+        "manual: emular prefers-reduced-motion"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-106",
+      "phase": "phase-1",
+      "title": "Layout responsive del panel",
+      "category": "design",
+      "description": "Ajustar el panel completo de escritorio a móvil: grid, resumen, tabla como tarjetas, header, paginación y drawer de navegación.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-101", "F-102", "F-103", "F-104", "F-105"],
+      "files": [
+        "src/app/features/inventory/inventory-page.*",
+        "src/app/features/inventory/components/stock-table/*",
+        "src/app/shared/ui/pagination/*"
+      ],
+      "steps": [
+        "Aplicar el grid minmax(0,1.85fr) / minmax(320px,1fr) con gap de 20px por encima de 1180px.",
+        "Por debajo de 1180px, apilar el gráfico debajo de la tabla a ancho completo y mantener el orden resumen, tabla, gráfico.",
+        "Por debajo de 768px, convertir cada fila en una tarjeta con nombre, SKU, almacén, stock/mínimo y estado; mostrar el select Ordenar por y ocultar el header de la tabla.",
+        "Por debajo de 720px, apilar el resumen y reducir el padding de página a 16px; ajustar el header a dos filas.",
+        "En la paginación móvil, mostrar solo anterior, Página X de Y y siguiente.",
+        "Verificar que no haya scroll horizontal a 320, 360, 390, 768, 1024 y 1440px y que las cifras no se partan."
+      ],
+      "acceptance_criteria": [
+        "A 320px no existe scroll horizontal y se puede leer y operar toda la pantalla.",
+        "Las tarjetas móviles muestran la misma información que la fila de escritorio.",
+        "El gráfico ocupa el ancho completo al apilarse y conserva etiquetas y valores.",
+        "El drawer de navegación funciona a 768px y 390px.",
+        "La jerarquía visual sigue el orden del draft en todas las anchuras."
+      ],
+      "verification": [
+        "manual: 320, 360, 390, 768, 1024 y 1440px",
+        "manual: rotar un viewport móvil"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-201",
+      "phase": "phase-2",
+      "title": "Crear producto desde el header",
+      "category": "functional",
+      "description": "Convertir Nuevo producto en un formulario accesible que crea un producto en el repositorio mock, actualiza la tabla y el resumen, y confirma con un toast.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-101", "F-102", "F-103", "F-004"],
+      "files": [
+        "src/app/features/inventory/components/new-product-dialog/*",
+        "src/app/features/inventory/inventory.store.ts",
+        "src/app/core/data/inventory.repository.ts"
+      ],
+      "steps": [
+        "Abrir un <dialog> nativo con showModal desde Nuevo producto, título Nuevo producto y cierre con Escape, botón Cerrar y clic en backdrop.",
+        "Construir los campos Nombre, SKU, Categoría, Almacén, Stock actual, Mínimo y Costo unitario en dos columnas de escritorio y una de móvil.",
+        "Validar requeridos, enteros no negativos y costo no negativo en el cliente; al enviar, mapear el error validation de SKU duplicado del repositorio al campo SKU y mostrar mensajes específicos bajo cada campo con aria-describedby.",
+        "Enviar con el botón Guardar producto, mostrar Guardando… y deshabilitar el envío mientras la promesa está pendiente.",
+        "Al guardar, insertar el producto al inicio de la tabla, resetear búsqueda, orden y página, actualizar el resumen y cerrar el dialog.",
+        "Mostrar el toast Producto guardado. Ya aparece en el inventario. y devolver el foco a Nuevo producto; si falla, mantener el dialog abierto con un mensaje.",
+        "Enfocar el primer campo al abrir y el primer campo inválido al intentar guardar."
+      ],
+      "acceptance_criteria": [
+        "El dialog se abre desde el header y se opera completo con teclado.",
+        "Guardar un producto válido lo muestra en la primera fila, incrementa el total y el resumen, y cierra el dialog.",
+        "Un SKU repetido muestra el error bajo el campo y no cierra el dialog.",
+        "Un stock o costo negativo, o un campo vacío, bloquea el guardado con un mensaje claro.",
+        "Escape cierra sin guardar y el foco vuelve al botón que abrió el dialog.",
+        "El toast se anuncia con aria-live y desaparece a los 5s."
+      ],
+      "verification": [
+        "manual: crear, fallar validación, repetir SKU y cerrar con Escape",
+        "npm test"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-202",
+      "phase": "phase-2",
+      "title": "Exportar CSV de la vista filtrada",
+      "category": "functional",
+      "description": "Exportar todas las filas filtradas, no solo la página, con las columnas base y un archivo compatible con Excel en español.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-103", "F-104"],
+      "files": [
+        "src/app/features/inventory/components/stock-toolbar/*",
+        "src/app/core/export/csv.ts",
+        "src/app/core/export/csv.spec.ts"
+      ],
+      "steps": [
+        "Añadir el botón secundario Exportar CSV con icono de descarga en la toolbar de la tabla.",
+        "Construir el CSV con las filas filtradas completas, encabezados en español y las columnas base: Producto, SKU, Almacén, Stock actual, Mínimo, Estado, Costo unitario y Valor.",
+        "Escribir UTF-8 con BOM, comillas en campos con coma, comilla o salto de línea y escape de celdas que empiecen por =, +, - o @.",
+        "Descargar con Blob, nombre inventario-YYYY-MM-DD.csv y revocar la URL después.",
+        "Deshabilitar el botón cuando no hay resultados y mostrar el toast Se exportaron {count} productos.",
+        "Cubrir con pruebas el escapado, el BOM y el nombre de archivo."
+      ],
+      "acceptance_criteria": [
+        "La exportación incluye 1,247 filas con el filtro por defecto, no solo las 8 visibles.",
+        "Al buscar tinta, el archivo contiene solo las coincidencias y el conteo coincide con el footer.",
+        "El archivo abre en Excel con acentos correctos y encabezados en español.",
+        "Una celda que empieza con = no se ejecuta como fórmula.",
+        "Con cero resultados el botón está deshabilitado."
+      ],
+      "verification": [
+        "npm test",
+        "manual: abrir el CSV en Excel o LibreOffice"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-203",
+      "phase": "phase-2",
+      "title": "Preferencias de columnas",
+      "category": "functional",
+      "description": "Permitir ocultar Almacén, Mínimo y Estado desde el icono de configuración, persistir la elección y respetarla en la exportación.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-103", "F-202"],
+      "files": [
+        "src/app/features/inventory/components/column-settings/*",
+        "src/app/features/inventory/inventory.store.ts"
+      ],
+      "steps": [
+        "Añadir un IconButton de configuración de 36px con aria-label Preferencias de columnas y aria-expanded.",
+        "Abrir un popover con checkboxes para Almacén, Mínimo y Estado; Producto y Stock actual son fijos y no se pueden ocultar.",
+        "Guardar el estado en localStorage con la clave stockpilot.columns y leerlo al iniciar con validación del esquema.",
+        "Incluir la acción Restaurar columnas y cerrar con Escape, clic fuera o el mismo botón, devolviendo el foco.",
+        "Ocultar el control en la vista de tarjetas móvil, donde se muestran todos los datos."
+      ],
+      "acceptance_criteria": [
+        "Ocultar Almacén y Estado actualiza la tabla sin recargar.",
+        "La elección sobrevive a una recarga de página.",
+        "Producto y Stock actual no se pueden desactivar.",
+        "Restaurar columnas vuelve a la configuración inicial.",
+        "El popover se opera con teclado y el foco vuelve al engranaje al cerrar.",
+        "El CSV respeta las columnas ocultas."
+      ],
+      "verification": [
+        "manual: ocultar, recargar y restaurar",
+        "manual: exportar después de ocultar"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-204",
+      "phase": "phase-2",
+      "title": "Panel de avisos de bajo stock",
+      "category": "functional",
+      "description": "Convertir la campana del header en un panel con los productos bajo mínimo, estado leído y acceso directo a la tabla priorizada.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-101", "F-103", "F-104"],
+      "files": [
+        "src/app/features/inventory/components/notification-panel/*",
+        "src/app/features/inventory/inventory.store.ts"
+      ],
+      "steps": [
+        "Añadir un punto danger al botón de campana cuando haya avisos sin leer y aria-label Avisos de stock, N sin leer.",
+        "Abrir un panel de 360px con encabezado Avisos de stock, acción Marcar todo como leído y lista de hasta cinco productos bajo mínimo.",
+        "Cada aviso muestra el nombre, la relación stock actual de mínimo y el almacén; los avisos usan dangerSoft como fondo de icono, no como tarjeta completa.",
+        "Añadir el pie con 18 más y el enlace Ver bajo mínimo; al activarlo, ordenar la tabla por Estado ascendente, ir a página 1, hacer scroll y cerrar el panel.",
+        "Guardar el estado leído en memoria durante la sesión y actualizar el punto y el conteo con aria-live al marcar.",
+        "Implementar cierre con Escape, clic fuera y retorno de foco; mostrar el estado vacío con el copy definido."
+      ],
+      "acceptance_criteria": [
+        "Con Todos los almacenes y 23 avisos, el panel lista cinco y el pie dice 18 más.",
+        "El punto de la campana desaparece después de Marcar todo como leído.",
+        "Ver bajo mínimo deja la tabla ordenada con los productos bajos primero y cierra el panel.",
+        "El panel se abre y se cierra con teclado y el foco regresa a la campana.",
+        "Con el almacén Santiago el panel muestra solo los avisos de ese almacén.",
+        "El estado vacío se ve cuando no hay productos bajo mínimo."
+      ],
+      "verification": [
+        "manual: abrir, marcar leído y navegar a la tabla",
+        "manual: filtrar por Santiago"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-205",
+      "phase": "phase-2",
+      "title": "Página de reporte de consumo",
+      "category": "functional",
+      "description": "Dar destino a Ver reporte completo con una página de reporte de consumo por producto, periodo y participación, coherente con el gráfico.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-105", "F-102", "F-004", "F-101"],
+      "files": [
+        "src/app/features/reports/reports-page.*",
+        "src/app/features/reports/reports.store.ts",
+        "src/app/features/inventory/components/top-consumed-chart/*",
+        "src/app/app.routes.ts",
+        "src/app/layout/sidebar/*"
+      ],
+      "steps": [
+        "Asegurar el ítem Reportes ya creado en F-001, entre Inventario y Compras, con estado activo propio.",
+        "Crear la página con h1 Reportes, selector de periodo 7/30/90 días y una tarjeta Consumo por producto.",
+        "Mostrar el total de unidades del periodo y una tabla con Producto, Categoría, Unidades y Participación, ordenada de mayor a menor.",
+        "Representar la participación con una barra fina de 4px en brand dentro de la celda, sin un segundo gráfico.",
+        "Leer el almacén desde el query param almacen (all por defecto), ofrecer un selector en la página que actualice la URL y pasar el alcance activo desde Ver reporte completo.",
+        "Mostrar estados de carga, vacío y error, y un enlace Volver al inventario.",
+        "Asegurar que Ver reporte completo navega a /reportes y que /reportes es accesible por URL directa."
+      ],
+      "acceptance_criteria": [
+        "Ver reporte completo navega a /reportes con el almacén activo y el ítem Reportes queda activo.",
+        "El top cinco del reporte coincide con las cifras del gráfico en 30 días para el mismo almacén.",
+        "La suma de unidades del reporte coincide con el total mostrado.",
+        "Cambiar el periodo actualiza tabla y total.",
+        "Al llegar desde el gráfico con Santiago seleccionado, el reporte abre con Santiago y su selector lo refleja.",
+        "La página se usa a 320px sin scroll horizontal.",
+        "La URL directa /reportes funciona y el título del documento es Reportes."
+      ],
+      "verification": [
+        "manual: comparar top cinco con el gráfico",
+        "manual: recargar /reportes"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-206",
+      "phase": "phase-2",
+      "title": "Secciones Compras y RRHH",
+      "category": "functional",
+      "description": "Resolver las dos secciones del draft que no forman parte del MVP con páginas honestas, navegables y con salida al inventario.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-001", "F-005"],
+      "files": [
+        "src/app/features/purchases/purchases-page.*",
+        "src/app/features/hr/hr-page.*",
+        "src/app/app.routes.ts"
+      ],
+      "steps": [
+        "Reemplazar los stubs de /compras y /rrhh con h1 propio, icono de línea, el copy definido y un botón Ir al inventario.",
+        "Mantener las etiquetas Pronto en la sidebar y el estado activo de cada ruta.",
+        "No mostrar datos falsos ni botones de creación que no funcionan.",
+        "Reutilizar EmptyState y la tipografía del sistema; no construir una tarjeta nueva.",
+        "Asegurar que el título del documento y el foco al h1 funcionan en ambas rutas."
+      ],
+      "acceptance_criteria": [
+        "Compras y RRHH se abren desde la sidebar y por URL directa.",
+        "Cada página explica que la sección todavía no está disponible sin disculparse ni usar tono de marketing.",
+        "El botón Ir al inventario navega a /inventario.",
+        "No hay controles muertos ni datos inventados.",
+        "El estado activo de la sidebar es correcto en ambas rutas."
+      ],
+      "verification": [
+        "manual: navegar a /compras y /rrhh, recargar y volver"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-301",
+      "phase": "phase-3",
+      "title": "Auditoría de accesibilidad",
+      "category": "quality",
+      "description": "Verificar y corregir el recorrido completo con teclado, lector de pantalla, zoom y contraste en todas las pantallas del MVP.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-201", "F-202", "F-204", "F-205", "F-206"],
+      "files": [
+        "src/styles.css",
+        "src/app/**/*.html",
+        "src/app/**/*.ts"
+      ],
+      "steps": [
+        "Recorrer con teclado Inicio, navegación, header, resumen, tabla, paginación, dialog, paneles y reportes sin usar el mouse.",
+        "Verificar skip link, foco visible, orden de tabulación, trampa de foco en dialog/paneles y retorno de foco.",
+        "Revisar contraste de danger/dangerSoft, success/successSoft, muted sobre canvas y brand sobre surface con una herramienta.",
+        "Agregar/verificar caption, th scope, aria-sort, aria-expanded, aria-controls, aria-live y nombres accesibles en icon buttons.",
+        "Probar zoom al 200% y 400% sin pérdida de contenido ni scroll horizontal.",
+        "Probar con lector de pantalla el resumen, la tabla, el gráfico, el dialog y los avisos."
+      ],
+      "acceptance_criteria": [
+        "Todas las acciones se completan solo con teclado en las seis rutas/estados.",
+        "No hay elementos interactivos sin nombre accesible.",
+        "El contraste de texto es al menos 4.5:1 y el de controles al menos 3:1.",
+        "Al 200% de zoom no se pierde contenido ni aparecen scrolls horizontales inesperados.",
+        "El lector de pantalla anuncia cambios de página, conteos, errores y toasts una sola vez.",
+        "Las animaciones se desactivan con prefers-reduced-motion."
+      ],
+      "verification": [
+        "manual: NVDA o VoiceOver",
+        "manual: zoom 200% y 400%",
+        "manual: axe DevTools sin errores críticos"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-302",
+      "phase": "phase-3",
+      "title": "Suite de pruebas del MVP",
+      "category": "quality",
+      "description": "Cubrir las reglas de negocio y los flujos críticos con pruebas rápidas y deterministas, sin snapshots frágiles.",
+      "priority": "P1",
+      "mvp": true,
+      "depends_on": ["F-003", "F-004", "F-104", "F-202", "F-201"],
+      "files": [
+        "src/app/core/**/*.spec.ts",
+        "src/app/features/inventory/**/*.spec.ts",
+        "src/app/features/reports/**/*.spec.ts",
+        "src/test-setup.ts"
+      ],
+      "steps": [
+        "Probar el repositorio mock: totales, filtros, búsqueda normalizada, orden, paginación, SKU duplicado y escenarios.",
+        "Probar InventoryStore: reset de página, clamp de página fuera de rango, descarte de respuestas viejas y actualización tras crear.",
+        "Probar formateadores y CSV: 1,247, RD$ 4.2M, BOM, comillas, nombre de archivo y celdas peligrosas.",
+        "Probar el dialog: campos requeridos, números negativos, SKU duplicado y foco al primer error.",
+        "Probar el gráfico y la tabla con datos del seed: cinco valores y ocho filas iniciales.",
+        "Eliminar pruebas dependientes de tiempos reales usando fakeAsync o vi.useFakeTimers."
+      ],
+      "acceptance_criteria": [
+        "npm test pasa en verde y deja de correr al terminar en CI.",
+        "Las pruebas cubren repositorio, store, formateo, CSV, dialog y estados de la tabla.",
+        "No hay pruebas basadas solo en snapshots de HTML completo.",
+        "Las pruebas no dependen de la fecha actual ni de Math.random.",
+        "Un cambio en el seed que rompa 1,247/23/RD$ 4.2M hace fallar la suite."
+      ],
+      "verification": ["npm test"],
+      "passes": false
+    },
+    {
+      "id": "F-303",
+      "phase": "phase-3",
+      "title": "Performance y presupuesto de build",
+      "category": "quality",
+      "description": "Mantener el panel rápido en hardware modesto: rutas lazy, gráfico sin librería, fuente subset y presupuestos de bundle.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-007", "F-106", "F-205"],
+      "files": [
+        "angular.json",
+        "src/app/app.routes.ts",
+        "src/app/features/inventory/inventory-page.*",
+        "src/app/features/reports/reports-page.*"
+      ],
+      "steps": [
+        "Verificar que cada ruta se carga con loadComponent y que Reportes no entra en el bundle inicial.",
+        "Usar computed para las vistas derivadas y evitar funciones costosas en templates; memoizar el filtrado de 1,247 filas.",
+        "Verificar en DevTools que el navegador solo descarga el woff2 latin; si el build emite también vietnamese o latin-ext, sustituir el import de Fontsource por un @font-face local con el woff2 latin y font-stretch 62% 125%.",
+        "Reducir el presupuesto initial a 350kB warning y 600kB error, y anyComponentStyle a 6kB error.",
+        "Medir con Lighthouse en build de producción: LCP menor a 2.5s en local, CLS menor a 0.1 y sin long tasks mayores a 200ms en la interacción de búsqueda.",
+        "Cargar el gráfico y la tabla con @defer si el reporte o secciones secundarias afectan el bundle inicial."
+      ],
+      "acceptance_criteria": [
+        "El bundle inicial no incluye la página de Reportes.",
+        "El build de producción no supera los presupuestos definidos.",
+        "Lighthouse de escritorio da Performance mayor o igual a 95 en local.",
+        "CLS del panel es menor a 0.1 al cargar y al filtrar.",
+        "Escribir en la búsqueda no bloquea el hilo principal más de 100ms por pulsación."
+      ],
+      "verification": [
+        "npm run build",
+        "manual: Lighthouse sobre build de producción",
+        "manual: Performance panel durante la búsqueda"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-304",
+      "phase": "phase-3",
+      "title": "Revisión de copy y locale es-DO",
+      "category": "quality",
+      "description": "Unificar todo el texto de la interfaz en español dominicano, con formatos DOP, estados consistentes y mensajes de error útiles.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-201", "F-202", "F-204", "F-205", "F-206"],
+      "files": [
+        "src/app/**/*.html",
+        "src/app/**/*.ts",
+        "src/app/core/format/inventory-format.ts",
+        "src/index.html"
+      ],
+      "steps": [
+        "Revisar cada cadena visible: títulos, botones, placeholders, estados, errores, toasts y páginas vacías.",
+        "Unificar términos: producto, almacén, stock actual, mínimo, bajo mínimo, disponible, valor del inventario.",
+        "Verificar que las acciones conservan su nombre en el flujo: Exportar CSV produce un CSV; Guardar producto produce Producto guardado.",
+        "Revisar formato de 1,247, RD$ 4.2M, fechas de archivo y plurales de 1 producto vs N productos.",
+        "Eliminar anglicismos innecesarios, signos de exclamación, disculpas y texto de relleno.",
+        "Confirmar lang=es-DO, title por ruta y meta description."
+      ],
+      "acceptance_criteria": [
+        "No quedan cadenas de interfaz en inglés; solo se conservan SKU y stock como términos de negocio.",
+        "Los estados se llaman Bajo mínimo y Disponible en toda la app.",
+        "Los errores explican qué pasó y cómo recuperarse, sin disculpas.",
+        "Los plurales y formatos de número son correctos con 1 y con 1,247.",
+        "Cada acción y su confirmación usan el mismo verbo.",
+        "lang=es-DO y los títulos de página son correctos en las cuatro rutas."
+      ],
+      "verification": [
+        "manual: revisión de todas las cadenas en las seis rutas",
+        "manual: crear 1 producto y comprobar el singular"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-305",
+      "phase": "phase-3",
+      "title": "QA visual y handoff",
+      "category": "quality",
+      "description": "Comparar el resultado con el draft, documentar las diferencias intencionales y dejar capturas y notas para la siguiente interacción.",
+      "priority": "P2",
+      "mvp": true,
+      "depends_on": ["F-106", "F-301", "F-303", "F-304"],
+      "files": [
+        "docs/qa/*",
+        "docs/claude-progress.txt",
+        "README.md"
+      ],
+      "steps": [
+        "Capturar Inventario, Reportes, el dialog, el panel de avisos y los estados vacío/error a 1440, 1024, 768 y 390px.",
+        "Comparar lado a lado con docs/StockPilot-draft.PNG: jerarquía, densidad, alineación, tipografía, color y estados.",
+        "Documentar las diferencias deliberadas: banda de resumen, sidebar de 240px, Disponible en lugar de OK, 1,247 en paginación, Reportes en la navegación.",
+        "Revisar spacing entre secciones y las especificidades CSS de tabla, cards y header para evitar márgenes que se cancelen.",
+        "Escribir en README las instrucciones de npm start, npm test, npm run build y los escenarios ?mock=.",
+        "Registrar en docs/claude-progress.txt el estado, las decisiones y lo que queda para la fase NestJS."
+      ],
+      "acceptance_criteria": [
+        "Existen capturas de las cinco vistas en las cuatro anchuras, guardadas en docs/qa/.",
+        "La comparación con el draft está documentada y cada diferencia tiene una razón.",
+        "No hay márgenes duplicados ni saltos de spacing entre header, resumen y grid.",
+        "README explica cómo correr, probar y provocar estados mock.",
+        "docs/claude-progress.txt resume el estado y los pendientes de la fase 4."
+      ],
+      "verification": [
+        "manual: revisión lado a lado con el draft",
+        "manual: abrir las capturas archivadas"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-401",
+      "phase": "phase-4",
+      "title": "Contrato de API NestJS",
+      "category": "data",
+      "description": "Congelar los DTO y endpoints que el frontend ya consume en mock, antes de escribir el backend, para que el reemplazo sea mecánico.",
+      "priority": "P3",
+      "mvp": false,
+      "deferred": true,
+      "depends_on": ["F-305"],
+      "files": [
+        "docs/api-contract.md",
+        "src/app/core/models/inventory.models.ts"
+      ],
+      "steps": [
+        "Documentar los endpoints de resumen, stock, consumo, avisos, almacenes y creación de producto con query params y respuestas.",
+        "Definir el sobre de paginación items/total/page/pageSize y el error code/message.",
+        "Alinear los DTO de NestJS con los modelos TypeScript existentes, incluidos nombres de campos y tipos numéricos.",
+        "Documentar la semántica de warehouseId=all, range=7d|30d|90d y sort=name|warehouse|onHand|minStock|status.",
+        "Definir el comportamiento de validación de SKU y los códigos 400/404/409.",
+        "Agregar ejemplos de request/response que coincidan con el seed mock."
+      ],
+      "acceptance_criteria": [
+        "Cada método de InventoryRepository tiene un endpoint documentado con la misma forma de respuesta.",
+        "No hay diferencias de nombres entre DTO y modelos del frontend.",
+        "El contrato cubre paginación, búsqueda, orden, filtros, creación y errores.",
+        "Los ejemplos usan 1,247, 23, RD$ 4.2M y los cinco consumos del draft.",
+        "Un desarrollador de NestJS puede implementar el backend sin leer componentes Angular."
+      ],
+      "verification": [
+        "manual: revisión del contrato contra InventoryRepository",
+        "manual: validar ejemplos con un mock HTTP"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-402",
+      "phase": "phase-4",
+      "title": "Repositorio HTTP y switch de entorno",
+      "category": "functional",
+      "description": "Implementar HttpInventoryRepository y cambiar el proveedor mock por HTTP con una bandera de entorno, sin tocar componentes.",
+      "priority": "P3",
+      "mvp": false,
+      "deferred": true,
+      "depends_on": ["F-401"],
+      "files": [
+        "src/app/core/data/http-inventory.repository.ts",
+        "src/app/app.config.ts",
+        "src/environments/*",
+        "src/app/core/data/inventory.repository.ts"
+      ],
+      "steps": [
+        "Implementar HttpClient con withFetch y un baseUrl configurable por entorno.",
+        "Mapear los endpoints a los métodos del contrato y transformar las respuestas al modelo del frontend.",
+        "Mapear errores HTTP a InventoryError y mostrar los mismos estados de error existentes.",
+        "Resolver InventoryRepository con useClass HttpInventoryRepository cuando useMock sea false.",
+        "Mantener MockInventoryRepository como proveedor de desarrollo y pruebas.",
+        "Agregar timeout y cancelación de peticiones obsoletas en búsqueda."
+      ],
+      "acceptance_criteria": [
+        "Con useMock=false la app consume la API y ningún componente importa el repositorio concreto.",
+        "Cambiar la bandera a true restaura el mock sin cambios de código.",
+        "Un 500, timeout o 404 muestra el ErrorPanel existente.",
+        "La búsqueda cancela o descarta la petición anterior.",
+        "El build de producción no incluye el seed mock cuando useMock es false."
+      ],
+      "verification": [
+        "manual: correr con API NestJS y con mock",
+        "npm test"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-403",
+      "phase": "phase-4",
+      "title": "Login y roles",
+      "category": "functional",
+      "description": "Agregar autenticación y permisos para que la creación, exportación y ajustes no estén disponibles para cualquier visitante.",
+      "priority": "P3",
+      "mvp": false,
+      "deferred": true,
+      "depends_on": ["F-402"],
+      "files": [
+        "src/app/features/auth/*",
+        "src/app/core/auth/*",
+        "src/app/app.routes.ts"
+      ],
+      "steps": [
+        "Crear la pantalla de inicio de sesión y el flujo de sesión con el API NestJS.",
+        "Agregar un interceptor que adjunte el token y redirija al login cuando expire.",
+        "Proteger las rutas con un guard funcional y conservar returnUrl.",
+        "Definir roles administrador y consulta; ocultar Nuevo producto, Exportar CSV y preferencias para consulta.",
+        "Reemplazar el usuario estático del sidebar por la sesión y agregar Cerrar sesión.",
+        "Mostrar un 403 claro cuando una acción no esté permitida, sin ocultar el error."
+      ],
+      "acceptance_criteria": [
+        "Sin sesión, cualquier ruta redirige a /login y vuelve a la ruta original después de entrar.",
+        "El token expirado cierra la sesión y muestra un mensaje claro.",
+        "El rol consulta no puede crear ni exportar, incluso forzando la petición.",
+        "El usuario del sidebar refleja la sesión real y Cerrar sesión funciona.",
+        "No se muestra información del inventario antes de autenticarse."
+      ],
+      "verification": [
+        "manual: login, expiración, 403 y logout",
+        "npm test"
+      ],
+      "passes": false
+    },
+    {
+      "id": "F-404",
+      "phase": "phase-4",
+      "title": "Datos server-side y mutaciones",
+      "category": "functional",
+      "description": "Mover búsqueda, orden, paginación y creación al servidor, con invalidación y actualización del resumen sin recargar.",
+      "priority": "P3",
+      "mvp": false,
+      "deferred": true,
+      "depends_on": ["F-402", "F-403"],
+      "files": [
+        "src/app/features/inventory/inventory.store.ts",
+        "src/app/core/data/http-inventory.repository.ts",
+        "src/app/features/inventory/components/new-product-dialog/*"
+      ],
+      "steps": [
+        "Enviar search, page, pageSize, sort y direction al servidor y dejar de filtrar el dataset completo en el cliente.",
+        "Manejar la creación con mutación, invalidación del resumen, la tabla y los avisos.",
+        "Implementar actualización optimista solo si el API confirma rápido; revertir con mensaje ante fallo.",
+        "Sincronizar filtros y página con query params para que la vista sea compartible.",
+        "Agregar pruebas de integración contra NestJS para paginación, búsqueda y creación.",
+        "Medir que una búsqueda tarde menos de 300ms con el servidor local."
+      ],
+      "acceptance_criteria": [
+        "El cliente no descarga 1,247 filas para mostrar 8.",
+        "Búsqueda, orden y paginación sobreviven a una recarga mediante query params.",
+        "Crear un producto actualiza tabla, resumen y avisos desde el servidor.",
+        "Un fallo de mutación revierte el estado y muestra un mensaje accionable.",
+        "Las pruebas de integración cubren paginación, búsqueda y creación.",
+        "La UI mantiene los mismos componentes y estados que en el MVP mock."
+      ],
+      "verification": [
+        "npm test",
+        "manual: integración con NestJS",
+        "manual: recargar una URL filtrada"
+      ],
+      "passes": false
+    }
+  ]
+}
